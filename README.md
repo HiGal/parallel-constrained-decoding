@@ -9,10 +9,6 @@ a single batched forward pass. The output always has every key, and every value 
 allowed label. Each field also comes with a probability and a diagnostic that tells you
 when the model wanted to answer something else.
 
-It is a from-scratch rebuild of `Qwen-2.5-1B-RLCD/core/` that applies the findings of
-the `notebooks/` series, plus a few new ones found while testing across model families
-(see [What changed and why](#what-changed-and-why)).
-
 ```python
 from pcd import Engine
 
