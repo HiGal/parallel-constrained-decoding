@@ -1,0 +1,39 @@
+[project]
+name = "pcd"
+version = "0.1.0"
+description = "Parallel constrained decoding: schema-guaranteed classification/extraction with any open LLM, on MLX or PyTorch"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+mlx = ["mlx>=0.22", "mlx-lm>=0.21"]
+torch = ["torch>=2.3", "transformers>=4.45", "accelerate>=0.30"]
+
+[project.scripts]
+pcd = "pcd.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "pydantic>=2"]
+notebooks = [
+    "ipykernel>=7.3.0",
+    "matplotlib>=3.10.9",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pcd"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "network: needs to download tokenizers/models from the Hugging Face Hub",
+    "slow: runs real (small) LLMs end to end",
+]
+addopts = "-ra -m 'not slow and not network'"
