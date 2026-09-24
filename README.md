@@ -156,48 +156,6 @@ Schemas can be the preset-style dict shown above, a JSON Schema whose properties
 `boolean` / `enum` / `const`, a Pydantic model with `bool`, `Literal` and `Enum` fields,
 or a `pcd.Schema`.
 
-## What changed and why
-
-Changes that come from the notebooks (`Qwen-2.5-1B-RLCD/notebooks/IMPLEMENTATION_NOTES.md`):
-
-| Finding | Old `core/` | `pcd` |
-|---|---|---|
-| Allowed values not in the prompt; <2% of probability on candidates (NB 03 §4) | catalog lists descriptions only | every value listed; candidate mass is typically 0.7–1.0 |
-| Boolean suffix ends in a bare space (NB 03 §3) | `": "` + `true` | lines tokenized in context, so `":` + ` true` |
-| Collisions decided by fallback rules and a 0.75 floor (NB 04 §3) | fuzzy match, digit-as-index, `choices[0]` | exact trie scoring; no fallbacks, no floors |
-| PyTorch has no collision handling | first choice always wins ties | same decoder for both backends |
-| Pad tokens leak into continuations (NB 04 §4) | sliced batched cache | continuations are new rows on the untouched prompt cache |
-| Numeric codes before names (NB 04 §7) | first digit only | hybrid: trie, then exact scoring of ≤10 survivors |
-| Full prefill on every request (NB 05 §3a) | yes | static head cached per schema; only the input is prefilled |
-| Logits for every suffix position (NB 05 §3b) | 81 MiB per pass | only the queried positions are projected (verified per model) |
-| Per-candidate GPU syncs (NB 05 §3c) | ~100 syncs | one gather per pass |
-| Hard-coded telemetry (NB 05 §1) | `sequential_forward_passes: 1`, `schema_match: True` | measured passes, timings and masses |
-| Fields cannot see each other (NB 05 §5) | none | `depends_on` waves, and first-field anchoring by default |
-| Qwen-only prompt | hard-coded `<\|im_start\|>` | model's own chat template, with fallbacks |
-
-New findings from building and testing across families:
-
-* **Small models often quote booleans.** At `"is_fraudulent":` Qwen2.5-1.5B put 82% on
-  ` "` (a quoted string) and only 8%/10% on ` true`/` false`. After the quote it was 84%
-  sure of `true`, so the unquoted-only comparison answered `false` for an obvious fraud
-  case. `pcd` sums both surface forms per label: one extra query in the same row.
-* **Score the line ending the model really writes.** Qwen writes `",\n` as a single token
-  and gives the bare `",` ~0 probability. Scoring `",` added 7 to 8 nats of noise to every
-  full-label score and made exact scoring pick `POSITIVE` for a furious customer.
-  Lines are now compiled with their newline.
-* **Where the newline goes depends on the tokenizer.** GPT-4-style BPE (Qwen, Llama 3,
-  Phi-4) and SentencePiece (Gemma, Mistral) attach it to the preceding punctuation.
-  GPT-2-style BPE (SmolLM2, Granite) attach it to the following indentation. The
-  compiler tries both layouts and keeps the one whose token boundaries are clean.
-* **A key placed straight after `{` reads as the first key.** When that key is not the
-  catalog's first, small models answer it worse. Qwen3-0.6B classified a double-billing
-  complaint as `FEATURE_REQUEST`, putting 1% on `BILLING`. With *any* JSON line in front
-  it put 95% on `BILLING`. Deciding the first field first and writing its answer
-  (`anchor_first`, on by default) raised agreement with the autoregressive answer on
-  4 of 5 models (+3 to +7 of 95 fields) and never lowered it, for ~15% more latency.
-* **Gemma 2 on PyTorch needs eager attention.** HF's SDPA path skips attention
-  soft-capping. `TorchBackend.load` switches to eager for models that use it.
-
 ## Benchmarks
 
 Apple M1 Pro (16 GB), macOS 15.1, mlx 0.32.2, torch 2.14 (mps). Each run uses the
